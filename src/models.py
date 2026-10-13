@@ -1,0 +1,1 @@
+# own, competitor, full-information models

@@ -1,0 +1,1 @@
+# break-even rates helper functions, competitor_offers(p_comp, margin) function
