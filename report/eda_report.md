@@ -1,8 +1,7 @@
 # Lending Game — Part 1: EDA findings
 
 What the data looks like, and what it implies for encoding and transforming the variables.
-Everything comes from `analysis/eda.ipynb`. Section 3 is **recommendations for the team to decide
-on**, not choices already made. Fuller reasoning: [`eda_report_detailed.md`](eda_report_detailed.md).
+Everything comes from `analysis/eda.ipynb`. Section 3 lists the recommendations; section 5 records what the team chose and implemented. Fuller reasoning: [`eda_report_detailed.md`](eda_report_detailed.md).
 
 We are **lender 3**, so `signal3` is our private signal; `signal1` and `signal2` appear only in the
 historical file.
@@ -224,3 +223,64 @@ bias the sample towards profiles that happen not to collide.
 3. **Does the near-separation above €125,000 generalise**, or is it a small-sample artefact?
 4. **Are the duplicate rows acceptable to keep?** We think yes (3.7), but it is a team call.
 5. **Is the default mechanism unchanged** in the new file? Unverifiable without outcomes.
+
+---
+
+## 5. Transformations
+
+What was implemented from section 3, by which function and where. The functions are in
+[`../src/data_prep.py`](../src/data_prep.py) and are run by section 9 of `analysis/eda.ipynb`.
+Everything here is **stateless** — nothing is learned from the data — so the past loans and the
+new applications go through the same functions and come out with columns that mean the same thing.
+The four `employment` categories are hardcoded for that reason.
+
+### Columns
+
+`general_prep_data` — the encodings every model uses. Replaces `sex` and `employment`; keeps
+`row_id`/`id`, the raw `income`, the raw signals and `default` as they are.
+
+| column | what it is |
+|---|---|
+| `sex_F` | 1 if `sex == "F"`, 0 if `"M"` |
+| `married` | unchanged 0/1 |
+| `employment_employed`, `employment_retired`, `employment_student`, `employment_unemployed` | one-hot over the four fixed categories (3.4). All four kept; a model can drop a reference level itself |
+| `income_zero` | 1 if `income == 0` (3.2) |
+| `signal1_missing`, `signal2_missing`, `signal3_missing` | 1 if that signal is exactly 0, i.e. no signal received (3.3). One per signal present in the file |
+
+`logreg_prep_data` — calls `general_prep_data`, then adds:
+
+| column | what it is |
+|---|---|
+| `income_log1p` | `log1p(income)`, defined at the 17% of rows where income is 0 (3.1) |
+| `unemployed_x_income_zero` | `employment_unemployed × income_zero`. The only interaction created: zero income occurs only among students and the unemployed, so adding `student × income_zero` as well would make `income_zero` redundant (3.4) |
+
+`boosting_prep_data` — calls `general_prep_data` and adds nothing for now. A tree is invariant to
+monotone transforms and can combine the one-hot columns with `income_zero` by itself.
+
+Not implemented: no income top-code flag (3.5), no de-duplication (3.7).
+
+### The split
+
+`split_data` splits the 100,000 past loans 80/20, stratified on `default`, with
+`random_state = SEED` (42, from `src/config.py`). It is called once on each of the three versions;
+since the input rows, order and seed are identical, all three put the same 80,000 `row_id`s in
+train and the same 20,000 in validation, which the notebook asserts. Default rate: 9.947% overall,
+9.948% in train, 9.945% in validation.
+
+`row_id` is added to `PastLoans` first, numbered `0…99,999` in original CSV row order — the file
+has no `id` of its own. The new applications keep their own `id` and are not split: they have no
+outcome.
+
+### Output files
+
+In `data/processed/`, written by section 9 of the notebook:
+
+| | general | logreg | boosting |
+|---|---|---|---|
+| train (80,000 rows) | `train_general.csv` | `train_logreg.csv` | `train_boosting.csv` |
+| validation (20,000 rows) | `validation_general.csv` | `validation_logreg.csv` | `validation_boosting.csv` |
+| applications (100,000 rows) | `applications_general.csv` | `applications_logreg.csv` | `applications_boosting.csv` |
+
+16 columns per past-loans file (18 for logreg) and 11 per applications file (13 for logreg) — the
+applications lack `default`, `signal1`, `signal2` and the two signal flags. The files in
+`data/raw/` are read-only and were only ever read.

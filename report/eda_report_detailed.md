@@ -4,7 +4,7 @@ Long-form companion to [`eda_report.md`](eda_report.md), written as source mater
 course report. It carries the same findings and the same recommendations, but adds the method
 behind each number, the full tables, and the reasoning for and against each conclusion.
 
-Everything is reproduced by `analysis/eda.ipynb`, which runs end-to-end (79 cells, 17 figures).
+Everything is reproduced by `analysis/eda.ipynb`, which runs end-to-end.
 No model is fitted beyond univariate AUC used as a descriptive statistic.
 
 We are **lender 3**: `signal3` is ours, `signal1` and `signal2` are the other two lenders' and are
