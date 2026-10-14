@@ -21,8 +21,10 @@ DATA_RAW = DATA_DIR / "raw"  # read-only inputs provided by the course
 DATA_PROCESSED = DATA_DIR / "processed"  # train / validation sets (Part 1)
 DATA_PREDICTIONS = DATA_DIR / "predictions"  # default probabilities (Part 2)
 
-ANALYSIS_DIR = PROJECT_ROOT / "analysis"
-FIGURES_DIR = ANALYSIS_DIR / "figures"  # PNGs embedded in the reports
+ANALYSIS_DIR = PROJECT_ROOT / "analysis"  # notebooks
+
+REPORT_DIR = PROJECT_ROOT / "report"  # markdown reports
+FIGURES_DIR = REPORT_DIR / "figures"  # PNGs embedded in the reports
 
 SUBMISSIONS_DIR = PROJECT_ROOT / "submissions"  # final id + rate CSV
 
@@ -37,5 +39,4 @@ SEED = 42
 LOAN_AMOUNT = 10_000  # every applicant asks for exactly this amount (euros)
 INCOME_TOPCODE = 1_000_000  # income is top-coded at this value in the raw data
 OUR_LENDER = 3  # we are lender 3; signal3 is our private signal
-
-DISCOUNT = 0.02
+DISCOUNT = 0.02  # borrowers compare their preferred lender's rate as 2 pp lower (Part 4)
