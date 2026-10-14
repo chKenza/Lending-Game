@@ -2,11 +2,18 @@
 import numpy as np
 import pandas as pd
 
-import sys; sys.path.append("..")
+# Notebooks put the project root on sys.path before importing this module, so `src` resolves.
 from src.config import LOAN_AMOUNT, DISCOUNT
 
 
 RATE_COLS = ["r1", "r2", "r3"]   # offers: decimals (0.12 = 12%), NaN = no offer
+
+# Highest rate accepted, as a guard against rates passed in percent (12 instead of 0.12).
+# Not 1.0: break-even p/(1-p) tends to 1 as p tends to 0.5 (competitors make no offer at
+# p >= 0.5), so break-even + margin can legitimately exceed 100%: p = 0.48 gives a break-even of
+# 0.923, plus an 8 pp margin = 1.003.
+# Any margin below 100 pp stays under 2.0.
+MAX_RATE = 2.0
 
 
 # Preferences
@@ -22,8 +29,12 @@ def assign_preferences(applicants, seed=42, col="pref"):
 
 
 # Choice rule
-def _rates_matrix(offers):
-    """DataFrame with r1,r2,r3 (or (n,3) array) -> validated float array."""
+def rates_matrix(offers):
+    """DataFrame with r1,r2,r3 (or (n,3) array) -> validated float array.
+
+    Rates are decimals; NaN = no offer. Raises ValueError if a rate is negative or above
+    MAX_RATE (most likely a rate given in percent).
+    """
     if isinstance(offers, pd.DataFrame):
         r = offers[RATE_COLS].to_numpy(dtype=float)
     else:
@@ -31,8 +42,8 @@ def _rates_matrix(offers):
     if r.ndim != 2 or r.shape[1] != 3:
         raise ValueError("offers must have shape (n, 3)")
     finite = r[np.isfinite(r)]
-    if finite.size and finite.max() > 1:
-        raise ValueError("Rate above 1.0: use decimals, e.g. 0.12 for 12%.")
+    if finite.size and finite.max() > MAX_RATE:
+        raise ValueError(f"Rate above {MAX_RATE}: use decimals, e.g. 0.12 for 12%.")
     if finite.size and finite.min() < 0:
         raise ValueError("Negative rate found.")
     return r
@@ -77,6 +88,7 @@ def simulate_market(offers, defaults, pref=None, mode="expected",
     mode     : "expected" -> average over the 3 types (weights 1/3, ties split)
                "random"   -> one seeded type per applicant, random tie-break
     pref     : only used in "random" mode; drawn from `seed` if None
+    loan_amount : one amount for every loan, or one per applicant (n,), same order
 
     loans (one row per applicant): r1, r2, r3 (offered rates), default, w1..w3 (prob. of taking lender k's loan;
         feed these to Part 5), profit1..3, exp_rate_taken, loan_made_prob,
@@ -84,13 +96,17 @@ def simulate_market(offers, defaults, pref=None, mode="expected",
     summary (one row per lender): n_loans, share_of_applicants, share_of_loans,
         avg_rate, default_rate_won, total_profit, profit_per_loan.
     """
-    rates = _rates_matrix(offers)
+    rates = rates_matrix(offers)
     n = len(rates)
     d = np.asarray(defaults, dtype=float)
     if len(d) != n:
         raise ValueError("offers and defaults must have the same length")
     if not np.isin(d, [0, 1]).all():
         raise ValueError("defaults must be 0/1")
+    amount = np.asarray(loan_amount, dtype=float)
+    if amount.ndim > 1 or (amount.ndim == 1 and len(amount) != n):
+        raise ValueError("loan_amount must be a scalar or have one value per applicant")
+    amount = np.broadcast_to(amount, (n,))   # a scalar becomes the same amount for everyone
     index = offers.index if isinstance(offers, pd.DataFrame) else np.arange(n)
 
     chosen = None
@@ -111,7 +127,8 @@ def simulate_market(offers, defaults, pref=None, mode="expected",
 
     # Profit uses the OFFERED rate, never the discounted one.
     r0 = np.nan_to_num(rates, nan=0.0, posinf=0.0)       # w = 0 where no offer
-    profit_if_taken = np.where(d[:, None] == 1, -loan_amount, r0 * loan_amount)
+    # amount[:, None] lines each applicant's amount up with their 3 offers.
+    profit_if_taken = np.where(d[:, None] == 1, -amount[:, None], r0 * amount[:, None])
     profit = w * profit_if_taken
 
     loans = pd.DataFrame(rates, index=index, columns=RATE_COLS)
