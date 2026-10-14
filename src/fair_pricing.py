@@ -1,67 +1,69 @@
 # break-even rates helper functions, competitor_offers(p_comp, margin) function
+"""Part 3 - break-even (fair) pricing.
 
-# fair-pricing formula
-# profit per euro lent:
-#  (1−p)*r−p
+Expected profit per euro lent, with default probability p and rate r:
+    (1 - p) * r - p
+Setting it to zero gives the break-even rate:
+    r = p / (1 - p)
 
-# break-even rate (setting profit to 0) --> r = p/(1-p)
+Break-even is a floor, the minimum rate we could offer. 
+Applicants with p >= 0.5 get
+no offer (break-even would be >= 100%, and the game forbids rates above 100%).
+"No offer" is NaN everywhere, which is what the submission file (missing rate)
+and src/simulator.py (NaN = no offer) both expect.
 
-# use the break-even rate for all probabilities computed in models.py/competitor_scenarios.ipynb
+All functions accept a float, a numpy array (what models.predict_default
+returns) or a pandas Series.
 
-def break_even_rate(dataset):
-    BE_rates = dataset.copy()
-    rates = []
-    p = dataset['probability column']
+Typical use from a notebook in analysis/:
 
-    # for instance in the probability column, find the break-even rate
-    # if the probability in the probability column is greater than or equal to 0.5
-    # leave it blank, we will not make an offer to this person
+    import sys; sys.path.append("..")
+    from src.models import fit_model, predict_default
+    from src.fair_pricing import break_even_rate, add_break_even_rates, \
+        competitor_offers, market_offers
 
-    for i in BE_rates['probability column']: #each instance in the probability column
-        if p >= 0.5:
-            return
-        
-        else:
-            r = p/(1-p) # get the rate
+    p_own = predict_default(model_own, X_val[own_cols])
+    r_floor = break_even_rate(p_own)
 
-        rates.append(r)  # append the rate 
+    # or on a DataFrame of predictions, e.g. the output of oof_predict_all
+    # (columns "own__gb", "full__logit", ...)
+    preds = add_break_even_rates(preds)
 
-    # add the rates to the dataset here
-    # TODO
-
-    return dataset.csv
-
-
-def competitor_offers(p_comp, margin):
-    """
-    p_comp : probability of default from competitors' models
-    margin : an assumed margin
-
-    Notes:
-    - no offer when p>= 0.5
-
-    """
-
-    r = (p_comp/(1-p_comp)) + margin
-
-
-# ---------------------------------------------------------------------------
-# Vectorised versions (work on a single float, a numpy array or a pandas Series)
-# ---------------------------------------------------------------------------
+    # competitor scenario for Parts 4, 6 and 7
+    offers = market_offers(p_lender1, p_lender2, r_ours, margin1=0.02)
+    loans, summary = simulate_market(offers, y_val)
+"""
 
 import numpy as np
 import pandas as pd
 
-NO_OFFER_THRESHOLD = 0.5  # p >= 0.5 -> break-even rate would be >= 100%, no offer
+NO_OFFER_THRESHOLD = 0.5  # p >= 0.5 -> break-even rate >= 100%, no offer
+MAX_RATE = 1.0  # rates above 100% are not allowed in the game
 
 
-def break_even(p):
+def offer(p):
     """
-    Break-even interest rate r = p / (1 - p) for probability(ies) of default p.
+    p : float, numpy array or pandas Series of default probabilities.
 
-    p : float, numpy array or pandas Series of default probabilities
+    Return if the bank makes an offer to the applicant:
+    1 = offer (p < 0.5), 0 = no offer (p >= 0.5, or p missing).
+    Returns the same type as p (a Series keeps p's index).
+    """
+    p_arr = np.asarray(p, dtype=float)
+    flag = (p_arr < NO_OFFER_THRESHOLD).astype(int)  # NaN < 0.5 is False -> 0
 
-    Returns the same shape as p, with NaN wherever p >= 0.5 (no offer).
+    if isinstance(p, pd.Series):
+        return pd.Series(flag, index=p.index, name="offer")
+    if flag.ndim == 0:
+        return int(flag)
+    return flag
+
+
+def break_even_rate(p):
+    """Break-even interest rate r = p / (1 - p), NaN (no offer) where p >= 0.5.
+
+    p : float, numpy array or pandas Series of default probabilities.
+    Returns the same type as p (a Series keeps p's index).
     """
     p_arr = np.asarray(p, dtype=float)
     with np.errstate(divide="ignore", invalid="ignore"):
@@ -69,36 +71,122 @@ def break_even(p):
 
     if isinstance(p, pd.Series):
         return pd.Series(r, index=p.index, name="break_even_rate")
-    if np.ndim(r) == 0:
+    if r.ndim == 0:
         return float(r)
     return r
 
+# flag for 1 or 0 if we give them a rate
+# give r or NaN when there is 1 or 0
 
-def add_break_even_rates(dataset, prob_col="p_default", rate_col="break_even_rate"):
-    """
-    Return a copy of `dataset` with a break-even rate column added.
 
-    dataset  : DataFrame holding the Part 2 predictions
-    prob_col : name of the column with predicted default probabilities
-    rate_col : name of the new column (NaN = no offer, p >= 0.5)
+def add_offer_flags(dataset, prob_cols=None, prefix="offer_"):
+    """Copy of `dataset` with one offer flag column (1 = offer, 0 = no offer)
+    per probability column. The flag for "own__gb" is "offer_own__gb".
+
+    prob_cols : column name or list of names. Default: every float column
+                whose values all lie in [0, 1].
     """
     out = dataset.copy()
-    out[rate_col] = break_even(out[prob_col])
+    if prob_cols is None:
+        prob_cols = [c for c in out.columns
+                     if pd.api.types.is_float_dtype(out[c])
+                     and out[c].between(0, 1).all()]
+    elif isinstance(prob_cols, str):
+        prob_cols = [prob_cols]
+
+    for col in prob_cols:
+        out[prefix + col] = offer(out[col])
+    return out
+
+
+def add_break_even_rates(dataset, prob_cols=None, prefix="be_"):
+    """Copy of `dataset` with one break-even rate column per probability column.
+
+    dataset   : DataFrame of predicted default probabilities, e.g. the output
+                of models.oof_predict_all (columns "<info set>__<model>"), or
+                a predictions file with id / row_id + probability columns.
+    prob_cols : column name or list of names to convert. Default: every float
+                column whose values all lie in [0, 1].
+    prefix    : the rate column for "own__gb" is "be_own__gb".
+    """
+    out = dataset.copy()
+    if prob_cols is None:
+        prob_cols = [c for c in out.columns
+                     if pd.api.types.is_float_dtype(out[c])
+                     and out[c].between(0, 1).all()]
+    elif isinstance(prob_cols, str):
+        prob_cols = [prob_cols]
+
+    for col in prob_cols:
+        out[prefix + col] = break_even_rate(out[col])
     return out
 
 
 def competitor_offers(p_comp, margin):
-    """
-    Rate a competitor offers: break-even rate plus an assumed margin.
+    """Rate a competitor offers: break-even rate plus an assumed margin.
 
-    p_comp : float, numpy array or pandas Series of the competitor's predicted
-             default probabilities (e.g. Lender 1 / Lender 2 model output)
-    margin : assumed margin added on top of break-even (scenario parameter,
-             e.g. 0.02 for +2 percentage points)
+    p_comp : a competitor's predicted default probabilities (float, array or
+             Series), e.g. our Lender 1 or Lender 2 model's predictions.
+    margin : assumed margin over break-even, a scenario parameter for
+             Parts 6 and 7 (0.02 = +2 percentage points).
 
-    Returns the offered rate(s), NaN where p_comp >= 0.5 (no offer).
+    No offer (NaN) when p_comp >= 0.5, or when break-even + margin would
+    exceed 100% (not allowed in the game).
     """
-    r = break_even(p_comp) + margin  # NaN + margin stays NaN -> still no offer
-    if isinstance(r, pd.Series):
-        r.name = "competitor_rate"
+    r = break_even_rate(p_comp) + margin  # NaN + margin stays NaN
+    r = np.where(np.asarray(r, dtype=float) <= MAX_RATE, r, np.nan)
+
+    if isinstance(p_comp, pd.Series):
+        return pd.Series(r, index=p_comp.index, name="competitor_rate")
+    if r.ndim == 0:
+        return float(r)
     return r
+
+
+def market_offers(p_lender1, p_lender2, r_ours, margin1, margin2=None,
+                  index=None):
+    """Offers of all three lenders, in the format src/simulator.py expects.
+
+    p_lender1, p_lender2 : default probabilities from our Lender 1 / Lender 2
+                           models (same row order as r_ours)
+    r_ours               : our offered rates (lender 3), NaN = no offer
+    margin1, margin2     : competitors' assumed margins (margin2 defaults to
+                           margin1)
+    index                : optional index (e.g. row_id); taken from r_ours if
+                           it is a Series
+
+    Returns a DataFrame with columns r1, r2, r3 (decimals, NaN = no offer).
+    """
+    if margin2 is None:
+        margin2 = margin1
+    if index is None and isinstance(r_ours, pd.Series):
+        index = r_ours.index
+
+    return pd.DataFrame({
+        "r1": np.asarray(competitor_offers(p_lender1, margin1), dtype=float),
+        "r2": np.asarray(competitor_offers(p_lender2, margin2), dtype=float),
+        "r3": np.asarray(r_ours, dtype=float),
+    }, index=index)
+
+
+def add_competitor_offers(dataset, prob_cols, margin, prefix="comp_"):
+    """Copy of `dataset` with one competitor offer column per probability column.
+
+    dataset   : DataFrame of predicted default probabilities
+    prob_cols : column name or list of names holding the competitors'
+                probabilities, e.g. ["lender1__logit", "lender2__logit"].
+                Required (no default), so our own model's column is never
+                priced as a competitor by accident.
+    margin    : assumed margin over break-even (0.02 = +2 percentage points)
+    prefix    : the offer column for "lender1__logit" is "comp_lender1__logit".
+
+    Offer = break-even + margin, NaN (no offer) when p >= 0.5 or when the
+    rate would exceed 100% (see competitor_offers).
+    """
+    out = dataset.copy()
+    if isinstance(prob_cols, str):
+        prob_cols = [prob_cols]
+
+    for col in prob_cols:
+        out[prefix + col] = competitor_offers(out[col], margin)
+    return out
