@@ -166,7 +166,9 @@ def market_offers(p_lender1, p_lender2, r_ours, margin1, margin2=None,
 
     p_lender1, p_lender2 : default probabilities from our Lender 1 / Lender 2
                            models (same row order as r_ours)
-    r_ours               : our offered rates (lender 3), NaN = no offer
+    r_ours               : our offered rates (lender 3), NaN = no offer.
+                           Must lie in [0, 1]: rates above 100% are not
+                           allowed in the game (same cap as the competitors)
     margin1, margin2     : competitors' assumed margins (margin2 defaults to
                            margin1)
     index                : optional index (e.g. row_id); taken from the
@@ -185,10 +187,17 @@ def market_offers(p_lender1, p_lender2, r_ours, margin1, margin2=None,
     if index is None and series:
         index = series[0].index
 
+    # Same rule for every lender: no rate above 100% (MAX_RATE), none below 0%.
+    r3 = np.asarray(r_ours, dtype=float)
+    finite = r3[np.isfinite(r3)]
+    if finite.size and (finite.max() > MAX_RATE or finite.min() < 0):
+        raise ValueError("our rates must lie in [0, 1]: decimals (0.12 for 12%), "
+                         "no rate above 100%")
+
     return pd.DataFrame({
         "r1": np.asarray(competitor_offers(p_lender1, margin1), dtype=float),
         "r2": np.asarray(competitor_offers(p_lender2, margin2), dtype=float),
-        "r3": np.asarray(r_ours, dtype=float),
+        "r3": r3,
     }, index=index)
 
 
