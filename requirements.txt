@@ -1,0 +1,18 @@
+# Lending Game -- shared Python dependencies
+# Install with:  uv venv --python 3.12 && uv pip install -r requirements.txt
+
+# core data handling
+pandas
+numpy
+
+# plotting
+matplotlib
+seaborn
+
+# modelling / metrics (univariate AUC in Part 1, models in Part 2)
+scikit-learn
+
+# notebooks (ipykernel = kernel, nbconvert = run notebooks end-to-end from CLI)
+jupyter
+ipykernel
+nbconvert
