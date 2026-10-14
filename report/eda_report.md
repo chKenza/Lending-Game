@@ -252,6 +252,7 @@ The four `employment` categories are hardcoded for that reason.
 | column | what it is |
 |---|---|
 | `income_log1p` | `log1p(income)`, defined at the 17% of rows where income is 0 (3.1) |
+| `income_log1p_sq` | `log1p(income)²`. The log-odds are close to linear in `log1p(income)` but still bend (risk falls faster at high incomes); the square lets a linear model follow that. Cross-validated log-loss of a logistic model on public variables + `signal3`: 0.29218 without it, 0.29137 with it. A squared or kinked `signal3` term gained much less and was not added |
 | `unemployed_x_income_zero` | `employment_unemployed × income_zero`. The only interaction created: zero income occurs only among students and the unemployed, so adding `student × income_zero` as well would make `income_zero` redundant (3.4) |
 
 `boosting_prep_data` — calls `general_prep_data` and adds nothing for now. A tree is invariant to
@@ -281,6 +282,6 @@ In `data/processed/`, written by section 9 of the notebook:
 | validation (20,000 rows) | `validation_general.csv` | `validation_logreg.csv` | `validation_boosting.csv` |
 | applications (100,000 rows) | `applications_general.csv` | `applications_logreg.csv` | `applications_boosting.csv` |
 
-16 columns per past-loans file (18 for logreg) and 11 per applications file (13 for logreg) — the
+16 columns per past-loans file (19 for logreg) and 11 per applications file (14 for logreg) — the
 applications lack `default`, `signal1`, `signal2` and the two signal flags. The files in
 `data/raw/` are read-only and were only ever read.

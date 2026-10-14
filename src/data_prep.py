@@ -154,7 +154,7 @@ def general_prep_data(data: pd.DataFrame) -> pd.DataFrame:
 
 
 def logreg_prep_data(data: pd.DataFrame) -> pd.DataFrame:
-    """Prepare data for the logistic regression: the general features plus two more.
+    """Prepare data for the logistic regression: the general features plus three more.
 
     Stateless, like `general_prep_data`, which it calls first.
 
@@ -164,6 +164,7 @@ def logreg_prep_data(data: pd.DataFrame) -> pd.DataFrame:
     column                          definition
     ==============================  ======================================================
     `income_log1p`                  `log1p(income)`
+    `income_log1p_sq`               `log1p(income) ** 2`
     `unemployed_x_income_zero`      `employment_unemployed * income_zero`
     ==============================  ======================================================
 
@@ -171,6 +172,11 @@ def logreg_prep_data(data: pd.DataFrame) -> pd.DataFrame:
     `income` column in place, so the choice of scale stays with the model. The EDA found the log
     scale is what makes income linear in the log-odds (R^2 0.713 -> 0.965), which matters for a
     linear model and not for a tree.
+
+    `income_log1p_sq` lets the model bend the income effect: the log-odds are close to linear in
+    `log1p(income)` but not exactly (risk falls faster at high incomes). Adding the square
+    improved the cross-validated log-loss of our model (public variables + signal3) from 0.29218
+    to 0.29137; adding a squared or kinked signal term gained far less, so none is created.
 
     Only the one interaction is created. `income_zero` occurs only among students and the
     unemployed, so `student_x_income_zero` would equal `income_zero` minus this column and make
@@ -184,12 +190,15 @@ def logreg_prep_data(data: pd.DataFrame) -> pd.DataFrame:
     Returns
     -------
     pd.DataFrame
-        The general output with the two extra columns appended. The input is not modified.
+        The general output with the three extra columns appended. The input is not modified.
     """
     preprocessed_logreg = general_prep_data(data)
 
     # log1p(income): defined at income == 0, where log would not be.
     preprocessed_logreg["income_log1p"] = np.log1p(preprocessed_logreg["income"])
+
+    # Square of log income: lets a linear model fit the remaining curvature of the income effect.
+    preprocessed_logreg["income_log1p_sq"] = preprocessed_logreg["income_log1p"] ** 2
 
     # The one interaction worth having (see above and report/eda_report.md, 3.4 and 3.6).
     preprocessed_logreg["unemployed_x_income_zero"] = (
@@ -214,7 +223,7 @@ def boosting_prep_data(data: pd.DataFrame) -> pd.DataFrame:
     and the interaction that the logistic regression needs would add nothing here: a tree can
     split on raw `income` and combine `employment_unemployed` with `income_zero` by itself.
 
-    Boosting-specific features can be added here later (the counterpart of the two columns
+    Boosting-specific features can be added here later (the counterpart of the three columns
     `logreg_prep_data` appends) without touching the general or logreg paths.
 
     Parameters
