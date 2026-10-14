@@ -39,3 +39,5 @@ SEED = 42
 LOAN_AMOUNT = 10_000  # every applicant asks for exactly this amount (euros)
 INCOME_TOPCODE = 1_000_000  # income is top-coded at this value in the raw data
 OUR_LENDER = 3  # we are lender 3; signal3 is our private signal
+
+DISCOUNT = 0.02

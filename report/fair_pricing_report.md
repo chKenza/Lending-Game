@@ -1,8 +1,27 @@
 # Lending Game — Part 3: Break-even rates
 
 Findings from applying the break-even rate to the Part 2 predictions. Everything comes from
-`analysis/fair_pricing.ipynb`; the functions are in `src/fair_pricing.py` (documented in
-[`src/fair_pricing.md`](../src/fair_pricing.md)).
+`analysis/fair_pricing.ipynb`; the functions are in `src/fair_pricing.py`.
+
+A loan of 1 euro at rate $r$ to a borrower with default probability $p$:
+
+* with probability $1 - p$ the borrower repays and we earn $r$;
+* with probability $p$ the borrower defaults and we lose the euro (recovery is zero).
+
+Expected profit per euro lent:
+
+$$\mathbb{E}[\pi] = (1 - p)\,r - p .$$
+
+Setting it to zero gives the **break-even rate**
+
+$$r^{*}(p) = \frac{p}{1 - p}.$$
+
+At $r^*$ we expect to make exactly zero; any rate above it is profitable *if $p$ is right*.
+$r^*$ is the **benchmark for every pricing decision**, a floor and not the price we will charge
+(Part 6 decides the price). Two rules apply everywhere:
+
+* **No offer when $p \ge 0.5$**: then $r^* \ge 100\%$, and the game forbids rates above 100%.
+* "No offer" is a missing rate (`NaN`), as in the submission file and the simulator.
 
 ## Summary
 
