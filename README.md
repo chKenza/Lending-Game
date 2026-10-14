@@ -28,6 +28,7 @@ Lending-Game/
 │   ├── simulator.py                    # Part 4 + 5: Market Simulator + winner's curse
 │   └── pricing_rules.py                # Parts 6–7: baseline, candidate rules, grid search
 │
+├── report/                             # all markdown files go here
 ├── data/
 │   ├── raw/                            # PastLoans.csv, NewApplications_Lender3_Round1.csv
 │   ├── processed/                      # train / validation sets from Part 1
