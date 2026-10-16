@@ -106,3 +106,52 @@ def plot_bin_margins(table, margin_curve, ax, title="R4: best margin per risk de
     ax.set_ylabel("margin over break-even (points)")
     ax.set_title(title)
     ax.legend(labelcolor=INK_SECONDARY)
+
+
+def plot_heatmap(table, ax, title, kind="diverging", scale=1e3, unit="thousand EUR",
+                 fmt="{:+,.0f}"):
+    """Rules (rows) x scenarios (columns) heatmap with the value in each cell.
+
+    kind "diverging"  : profit; two hues around a neutral 0 (red = loss, blue = gain)
+    kind "sequential" : regret; one hue, light = small, dark = large
+    """
+    import matplotlib.colors as mcolors
+    values = table.to_numpy(dtype=float) / scale
+    if kind == "diverging":
+        cmap = mcolors.LinearSegmentedColormap.from_list(
+            "loss_gain", ["#c23b3a", "#f2b8b5", "#f3f2ef", "#9ec5f4", "#1c5cab"])
+        vmax = np.nanmax(np.abs(values))
+        norm = mcolors.TwoSlopeNorm(vmin=-vmax, vcenter=0.0, vmax=vmax)
+    else:
+        cmap = mcolors.LinearSegmentedColormap.from_list(
+            "regret", ["#f3f2ef", "#b7d3f6", "#5598e7", "#1c5cab", "#0d366b"])
+        norm = mcolors.Normalize(vmin=0, vmax=np.nanmax(values))
+    im = ax.imshow(values, cmap=cmap, norm=norm, aspect="auto")
+    ax.set_xticks(range(table.shape[1]), table.columns, rotation=45, ha="right")
+    ax.set_yticks(range(table.shape[0]), table.index)
+    ax.grid(False)
+    for i in range(values.shape[0]):
+        for j in range(values.shape[1]):
+            v = values[i, j]
+            dark = abs(norm(v) - (0.5 if kind == "diverging" else 0)) > 0.35
+            ax.text(j, i, fmt.format(v), ha="center", va="center", fontsize=7.5,
+                    color="#ffffff" if dark else INK)
+    ax.set_title(title)
+    return im
+
+
+def plot_bootstrap_intervals(table, ax, title):
+    """Forest plot of bootstrap differences: one row per comparison, point
+    estimate with its 95% interval (thousand EUR)."""
+    t = table.iloc[::-1]
+    y = np.arange(len(t))
+    ax.errorbar(t["estimate"] / 1e3, y,
+                xerr=[(t["estimate"] - t["lower"]) / 1e3, (t["upper"] - t["estimate"]) / 1e3],
+                fmt="o", ms=6, color=LENDER_COLORS[3], ecolor=LENDER_COLORS[3], elinewidth=1.5,
+                capsize=3, mec=SURFACE)
+    ax.axvline(0, color=REFERENCE, lw=1, ls="--")
+    ax.set_yticks(y, t.index)
+    ax.grid(axis="y", visible=False)
+    ax.set_xlabel("profit difference (thousand EUR, 95% bootstrap interval)")
+    ax.set_title(title)
+

@@ -874,3 +874,142 @@ def load_tuned_rules(train, filename="tuned_rules.json", n_draws=50, seed=SEED):
         rules[family] = rule
     return rules
 
+
+# ---------------------------------------------------------------------------
+# Part 7: scoring the tuned rules against competitor scenarios
+# ---------------------------------------------------------------------------
+
+# Held-out scenarios (plan, Part 7 section 1): never used in tuning.
+# name -> (description, make_scenario arguments). The strategic scenario
+# needs a rule, so it is added by part7_scenarios.
+HELD_OUT_SCENARIOS = {
+    "H1": ("margin +1 pt", {"name": "margin", "margin": 0.01}),
+    "H3": ("margin +3 pts", {"name": "margin", "margin": 0.03}),
+    "H5": ("margin +5 pts", {"name": "margin", "margin": 0.05}),
+    "A05": ("asymmetric: lender 1 +0, lender 2 +5 pts", {"name": "margin", "margin": (0.0, 0.05)}),
+    "A13": ("asymmetric: lender 1 -1, lender 2 +3 pts", {"name": "margin", "margin": (-0.01, 0.03)}),
+    "K50": ("markup 50%", {"name": "markup", "markup": 0.5}),
+    "IPUB": ("competitors know less: p_public, +2 pts",
+             {"name": "margin", "margin": 0.02, "p_cols": ("p_public", "p_public")}),
+    "IFULL": ("competitors know more: p_full, +2 pts",
+              {"name": "margin", "margin": 0.02, "p_cols": ("p_full", "p_full")}),
+}
+
+
+def part7_scenarios(data, t6_margins, strategic_rule=None, strategic_name="S"):
+    """Every Part 7 scenario on `data` (the validation set).
+
+    Returns (scenarios, info): scenarios = dict name -> (r1, r2), the six
+    tuning scenarios T1-T6 (T6 with the saved t6_margins) followed by the
+    held-out ones; info = DataFrame with each scenario's group and description.
+    strategic_rule : a loaded rule (function data -> rates) that both
+                     competitors apply to their own p, e.g. our recommended rule.
+    """
+    scenarios = tuning_scenarios(data, t6_margins)
+    descriptions = {"T1": "margin 0 (break-even)", "T2": "margin +2 pts", "T3": "margin +4 pts",
+                    "T4": "markup 15%", "T5": "markup 35%",
+                    "T6": f"best-response cycle: +{100 * t6_margins[0]:g} / +{100 * t6_margins[1]:g} pts"}
+    groups = {name: "tuning" for name in scenarios}
+    for name, (description, args) in HELD_OUT_SCENARIOS.items():
+        args = dict(args)
+        scenarios[name] = make_scenario(args.pop("name"), data, **args)
+        descriptions[name], groups[name] = description, "held-out"
+    if strategic_rule is not None:
+        scenarios[strategic_name] = make_scenario("rule", data, rule=strategic_rule, rule_params={})
+        descriptions[strategic_name] = "strategic: both competitors use our recommended rule"
+        groups[strategic_name] = "held-out"
+    info = pd.DataFrame({"group": groups, "description": descriptions}).loc[list(scenarios)]
+    return scenarios, info
+
+
+def score_rules(rates, scenarios, data, groups=5):
+    """Every rule against every scenario, in expected mode.
+
+    rates : dict rule name -> our rates on `data` (e.g. rules[name](data))
+    Returns (table, profits):
+      table   : one row per (rule, scenario): profit, n_loans, share,
+                profit_per_loan, avg_rate, default_rate_won, gap (winner's
+                curse, observed - predicted on the loans we win)
+      profits : dict (rule, scenario) -> our expected profit per applicant
+                (the loans' profit3 column), for the paired bootstrap
+    """
+    d = data["default"]
+    p = data["p_own"].to_numpy()
+    rows, profits = [], {}
+    for rule_name, r3 in rates.items():
+        for scen_name, (r1, r2) in scenarios.items():
+            loans, summary = _simulate(r1, r2, r3, d)
+            ours = summary.loc[3]
+            curse = winners_curse(loans, p, lender=3, groups=groups)
+            rows.append({"rule": rule_name, "scenario": scen_name,
+                         "profit": ours["total_profit"], "n_loans": ours["n_loans"],
+                         "share": ours["share_of_applicants"],
+                         "profit_per_loan": ours["total_profit"] / ours["n_loans"]
+                         if ours["n_loans"] > 0 else np.nan,
+                         "avg_rate": ours["avg_rate"],
+                         "default_rate_won": ours["default_rate_won"],
+                         "gap": curse.loc["overall", "gap"]})
+            profits[(rule_name, scen_name)] = loans["profit3"].to_numpy()
+    return pd.DataFrame(rows), profits
+
+
+def regret_table(profit_table):
+    """regret(rule, scenario) = best profit in that scenario - this rule's
+    profit. profit_table: rules (rows) x scenarios (columns)."""
+    return profit_table.max(axis=0) - profit_table
+
+
+def decision_criteria(profit_table, weights):
+    """The three Part 7 criteria for each rule (rows of profit_table):
+    worst-case profit (maximin), max regret (minimax regret, the main
+    criterion) and weighted profit with `weights` (dict scenario -> weight,
+    normalised to sum to 1)."""
+    w = pd.Series(weights, dtype=float).reindex(profit_table.columns).fillna(0.0)
+    w = w / w.sum()
+    regret = regret_table(profit_table)
+    return pd.DataFrame({
+        "worst-case profit": profit_table.min(axis=1),
+        "worst scenario": profit_table.idxmin(axis=1),
+        "max regret": regret.max(axis=1),
+        "max-regret scenario": regret.idxmax(axis=1),
+        "weighted profit": profit_table.mul(w, axis=1).sum(axis=1),
+    })
+
+
+def bootstrap_diff(profits_a, profits_b, n=500, alpha=0.05, seed=SEED):
+    """Paired bootstrap of the total-profit difference between two rules in
+    one scenario: the applicants are resampled with replacement, the same
+    resample for both rules. profits_a/b: per-applicant expected profits
+    (from score_rules). Returns estimate, lower, upper and the share of
+    resamples where a beats b."""
+    a, b = np.asarray(profits_a, dtype=float), np.asarray(profits_b, dtype=float)
+    rng = np.random.default_rng(seed)
+    idx = rng.integers(0, len(a), size=(n, len(a)))
+    diffs = a[idx].sum(axis=1) - b[idx].sum(axis=1)
+    lower, upper = np.quantile(diffs, [alpha / 2, 1 - alpha / 2])
+    return {"estimate": a.sum() - b.sum(), "lower": lower, "upper": upper,
+            "share a > b": float(np.mean(diffs > 0))}
+
+
+def random_mode_profits(rates, scenario, data, seeds=range(20)):
+    """Our profit in random mode (one preference type drawn per applicant,
+    random tie-breaks), for several seeds. Returns an array of profits."""
+    r1, r2 = scenario
+    offers = np.column_stack([np.asarray(r, dtype=float) for r in (r1, r2, rates)])
+    d = np.asarray(data["default"])
+    return np.array([simulate_market(offers, d, mode="random", seed=s)[1].loc[3, "total_profit"]
+                     for s in seeds])
+
+
+def save_final_rule(name, params, notes="", filename="final_rule.json"):
+    """Save the rule chosen in Part 7 for Part 8 (data/pricing/final_rule.json)."""
+    PRICING_DIR.mkdir(parents=True, exist_ok=True)
+    def plain(v):
+        if isinstance(v, (np.ndarray, list, tuple)):
+            return [plain(x) for x in v]
+        return v.item() if isinstance(v, np.generic) else v
+    path = PRICING_DIR / filename
+    path.write_text(json.dumps({"rule": name, "params": {k: plain(v) for k, v in params.items()},
+                                "notes": notes}, indent=2))
+    return path
+
