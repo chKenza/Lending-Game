@@ -13,7 +13,7 @@ for tuning, and `data/predictions/validation_selected.csv` (20k loans), used for
 
 **Rules that apply to every family:**
 
-- Rates are clipped to [floor, 100%], with a floor of 1%, so very safe borrowers are not priced near 0. maybe 2% ?? to be discussed
+- Rates are clipped to [floor, 100%], with a floor of 1%, so very safe borrowers are not priced near 0. maybe 2% ?? to be discussed; no offer above 100%
 - No offer (`NaN`) when $p \ge 0.5$.
 - No rule ever uses competitor information; it only takes `p_own` and our own features.
 
@@ -40,14 +40,15 @@ scenarios rather than a single guess (step 3).
 | **R1** | Fixed margin | $r = be(p) + m$ | m ∈ 0–8 pts, step 0.25 |
 | **R2** | Proportional markup | $r = (1+k)\,be(p)$ | k ∈ 0–1, step 0.05 |
 | **R3** | Adjusted p | $\text{logit}(p_{adj}) = \text{logit}(p) + a$, then $r = be(p_{adj}) + m$ | a ∈ 0–0.6, step 0.05; m ∈ {0, 1, 2} pts |
-| **R4** | Best rate per risk bin | decile bins of `p_own`. Per bin, $r = be(p) + m_b$, with $m_b$ maximising $\Pi_b = \sum_{i\in b} w_{3,i}\,[(1-d_i)\,r_i - d_i]$, then smoothed into an increasing curve $m(p)$ | $m_b$ ∈ −2 to +10 pts, step 0.25 |
-| **R5** | Margin that grows with uncertainty | $r = be(p) + m_0 + m_1\,\mathbb 1[\text{signal3 missing}] + m_2\,\mathbb 1[\text{income}=0]$ | $m_0$ ∈ 0–4; $m_1, m_2$ ∈ 0–4 pts, step 0.5 |
-| **R6** | Information advantage | $r = be(p_{own}) + m_0 + m_1\,(p_{pub} - p_{own})$ | $m_0$ ∈ 0–4 pts, step 0.25; $m_1$ ∈ −1 to +1, step 0.1 |
-| **R7** | Undercut the predicted competitor rate | $r = \max\big(be(p_{adj}),\ \hat r_{comp} - \delta\big)$, with $\hat r_{comp}$ the predicted cheaper competitor rate (see notes) | $\delta$ ∈ −2 to +3 pts, step 0.25; quantile q ∈ {0.25, 0.5}; $a$ (for $p_{adj}$) ∈ {0, 0.2, 0.4} |
-| **+C** | No-offer cutoff (add-on to the best 1–2 rules) | no offer if $p > \bar p$ | $\bar p$ ∈ {0.2, 0.25, 0.3, 0.4, 0.5} |
+| **R4** | Best rate per risk bin | decile bins of `p_own`. Per bin, $r = be(p) + m_b$, with $m_b$ maximising $\Pi_b = \sum_{i\in b} w_{3,i}\,[(1-d_i)\,r_i - d_i]$, then smoothed into an increasing curve $m(p)$ | $m_b$ ∈ −2 to +20 pts, step 0.25 |
+| **R5** | Margin that grows with uncertainty | $r = be(p) + m_0 + m_1\,\mathbb 1[\text{signal3 missing}] + m_2\,\mathbb 1[\text{income}=0]$ | $m_0$, $m_1$ ∈ 0–4 pts, $m_2$ ∈ 0–8 pts, step 0.5 |
+| **R6** | Information advantage | $r = be(p_{own}) + m_0 + m_1\,(p_{pub} - p_{own})$ | $m_0$ ∈ 0–8 pts, step 0.25; $m_1$ ∈ −1 to +1, step 0.1 |
+| **R7** | Undercut the predicted competitor rate | $r = \max\big(be(p_{adj}),\ \hat r_{comp} - \delta\big)$, with $\hat r_{comp}$ the predicted cheaper competitor rate (see notes) | $\delta$ ∈ −8 to +3 pts, step 0.25; quantile q ∈ {0.25, 0.5}; $a$ (for $p_{adj}$) ∈ {0, 0.2, …, 1} |
+| **+C** | No-offer cutoff (add-on to the best 1–2 rules) | no offer if $p > \bar p$ | $\bar p$ ∈ {0.1, 0.125, 0.15, 0.175, 0.2, 0.25, 0.3, 0.4, 0.5} |
 
-ideas: exp(), p**1.5
-for R5, more important to look at low signal 3 than to look at signal 3 missing
+Ideas to be explored by Karin (maybe): exp(), p**1.5
+Note: for R5, more important to look at low signal 3 than to look at signal 3 missing
+
 **Notes on R4:**
 
 - Optimising each bin separately is valid. A bin's rates only affect the applicants in that bin,
@@ -71,8 +72,11 @@ for R5, more important to look at low signal 3 than to look at signal 3 missing
 
 - Predict the competitors' **default probability**, not their rate, because the rate depends on
   the unknown pricing scenario: on `train_oof`, regress `p_lender1` and `p_lender2` on our own
-  information (`p_own`, `p_public`, public features, `signal3`). In each scenario, apply that
-  scenario's pricing to the predicted $p$ to get the predicted rates.
+  information (`p_own`, `p_public`, public features, `signal3`). Turn the predicted $p$ into the
+  competitors' **break-even** rates, the same in every scenario: their true pricing is unknown, and
+  using each scenario's true pricing would leak information we will not have. An assumed margin
+  $\hat m$ on top would only shift $\hat r_{comp}$ like changing $\delta$ by $-\hat m$, so it is
+  carried by $\delta$ (hence $\delta$'s wide range).
 - Target the **cheaper** competitor: $\hat r_{comp}$ is the q-quantile of $\min(\hat r_1, \hat r_2)$,
   using the regression residuals. The expected minimum is lower than the minimum of the
   expectations.
@@ -103,9 +107,11 @@ with when each best-responds to the others:
    `p_own`).
 2. In turn, set each lender's margin to the one (grid 0–8 pts, step 0.25) that maximises its own
    profit given the other two.
-3. Repeat until no margin changes by more than 0.25 pt (cap at 10 rounds).
+3. Repeat until no margin changes by more than 0.25 pt (cap at 20 rounds).
 
-The resulting competitor margins $(m_1^{eq}, m_2^{eq})$ define the equilibrium scenario.
+The resulting competitor margins $(m_1^{eq}, m_2^{eq})$ define the equilibrium scenario. If the
+margins cycle instead of converging, T6 uses their average over rounds 3–20 (rounds 1–2 are a
+warm-up), rounded to the 0.25-point grid.
 
 **3c. Tuning set.**
 
