@@ -13,7 +13,7 @@ for tuning, and `data/predictions/validation_selected.csv` (20k loans), used for
 
 **Rules that apply to every family:**
 
-- Rates are clipped to [floor, 100%], with a floor of 1%, so very safe borrowers are not priced near 0. maybe 2% ?? to be discussed; no offer above 100%
+- Rates are clipped to [floor, 100%], where we vary the floor between 0.5% and 2%.
 - No offer (`NaN`) when $p \ge 0.5$.
 - No rule ever uses competitor information; it only takes `p_own` and our own features.
 
@@ -46,7 +46,6 @@ scenarios rather than a single guess (step 3).
 | **R7** | Undercut the predicted competitor rate | $r = \max\big(be(p_{adj}),\ \hat r_{comp} - \delta\big)$, with $\hat r_{comp}$ the predicted cheaper competitor rate (see notes) | $\delta$ ∈ −8 to +3 pts, step 0.25; quantile q ∈ {0.25, 0.5}; $a$ (for $p_{adj}$) ∈ {0, 0.2, …, 1} |
 | **+C** | No-offer cutoff (add-on to the best 1–2 rules) | no offer if $p > \bar p$ | $\bar p$ ∈ {0.1, 0.125, 0.15, 0.175, 0.2, 0.25, 0.3, 0.4, 0.5} |
 
-Ideas to be explored by Karin (maybe): exp(), p**1.5
 Note: for R5, more important to look at low signal 3 than to look at signal 3 missing
 
 **Notes on R4:**
