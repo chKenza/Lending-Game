@@ -190,3 +190,6 @@ def add_competitor_offers(dataset, prob_cols, margin, prefix="comp_"):
     for col in prob_cols:
         out[prefix + col] = competitor_offers(out[col], margin)
     return out
+
+
+# test
