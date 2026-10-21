@@ -40,6 +40,18 @@ import pandas as pd
 NO_OFFER_THRESHOLD = 0.5  # p >= 0.5 -> break-even rate >= 100%, no offer
 MAX_RATE = 1.0  # rates above 100% are not allowed in the game
 
+# Prefixes of the columns the add_... functions create. Their values can also
+# lie in [0, 1], so they are never mistaken for probabilities.
+GENERATED_PREFIXES = ("offer_", "be_", "comp_")
+
+
+def _check_probabilities(p_arr):
+    """Raise if a (non-missing) probability lies outside [0, 1]: such a value
+    is a bug upstream and would otherwise produce a meaningless rate."""
+    finite = p_arr[np.isfinite(p_arr)]
+    if finite.size and (finite.min() < 0 or finite.max() > 1):
+        raise ValueError("default probabilities must lie in [0, 1]")
+
 
 def offer(p):
     """
@@ -50,6 +62,7 @@ def offer(p):
     Returns the same type as p (a Series keeps p's index).
     """
     p_arr = np.asarray(p, dtype=float)
+    _check_probabilities(p_arr)
     flag = (p_arr < NO_OFFER_THRESHOLD).astype(int)  # NaN < 0.5 is False -> 0
 
     if isinstance(p, pd.Series):
@@ -66,6 +79,7 @@ def break_even_rate(p):
     Returns the same type as p (a Series keeps p's index).
     """
     p_arr = np.asarray(p, dtype=float)
+    _check_probabilities(p_arr)
     with np.errstate(divide="ignore", invalid="ignore"):
         r = np.where(p_arr < NO_OFFER_THRESHOLD, p_arr / (1 - p_arr), np.nan)
 
@@ -75,8 +89,18 @@ def break_even_rate(p):
         return float(r)
     return r
 
-# flag for 1 or 0 if we give them a rate
-# give r or NaN when there is 1 or 0
+def _prob_columns(dataset, prob_cols):
+    """Columns to convert: `prob_cols` if given (a name or a list), otherwise
+    every float column whose values all lie in [0, 1], except the columns
+    created by the add_... functions (offer_, be_, comp_ prefixes)."""
+    if prob_cols is None:
+        return [c for c in dataset.columns
+                if not str(c).startswith(GENERATED_PREFIXES)
+                and pd.api.types.is_float_dtype(dataset[c])
+                and dataset[c].between(0, 1).all()]
+    if isinstance(prob_cols, str):
+        return [prob_cols]
+    return list(prob_cols)
 
 
 def add_offer_flags(dataset, prob_cols=None, prefix="offer_"):
@@ -84,15 +108,10 @@ def add_offer_flags(dataset, prob_cols=None, prefix="offer_"):
     per probability column. The flag for "own__gb" is "offer_own__gb".
 
     prob_cols : column name or list of names. Default: every float column
-                whose values all lie in [0, 1].
+                whose values all lie in [0, 1] (see _prob_columns).
     """
     out = dataset.copy()
-    if prob_cols is None:
-        prob_cols = [c for c in out.columns
-                     if pd.api.types.is_float_dtype(out[c])
-                     and out[c].between(0, 1).all()]
-    elif isinstance(prob_cols, str):
-        prob_cols = [prob_cols]
+    prob_cols = _prob_columns(out, prob_cols)
 
     for col in prob_cols:
         out[prefix + col] = offer(out[col])
@@ -106,16 +125,11 @@ def add_break_even_rates(dataset, prob_cols=None, prefix="be_"):
                 of models.oof_predict_all (columns "<info set>__<model>"), or
                 a predictions file with id / row_id + probability columns.
     prob_cols : column name or list of names to convert. Default: every float
-                column whose values all lie in [0, 1].
+                column whose values all lie in [0, 1] (see _prob_columns).
     prefix    : the rate column for "own__gb" is "be_own__gb".
     """
     out = dataset.copy()
-    if prob_cols is None:
-        prob_cols = [c for c in out.columns
-                     if pd.api.types.is_float_dtype(out[c])
-                     and out[c].between(0, 1).all()]
-    elif isinstance(prob_cols, str):
-        prob_cols = [prob_cols]
+    prob_cols = _prob_columns(out, prob_cols)
 
     for col in prob_cols:
         out[prefix + col] = break_even_rate(out[col])
@@ -131,10 +145,13 @@ def competitor_offers(p_comp, margin):
              Parts 6 and 7 (0.02 = +2 percentage points).
 
     No offer (NaN) when p_comp >= 0.5, or when break-even + margin would
-    exceed 100% (not allowed in the game).
+    exceed 100% (not allowed in the game). A negative margin (a competitor
+    pricing below break-even) is allowed as a scenario, but the rate never
+    goes below 0%.
     """
-    r = break_even_rate(p_comp) + margin  # NaN + margin stays NaN
-    r = np.where(np.asarray(r, dtype=float) <= MAX_RATE, r, np.nan)
+    r = np.asarray(break_even_rate(p_comp), dtype=float) + margin  # NaN stays NaN
+    r = np.where(np.isnan(r), np.nan, np.maximum(r, 0.0))  # no negative rate
+    r = np.where(r <= MAX_RATE, r, np.nan)  # NaN <= 1 is False -> stays NaN
 
     if isinstance(p_comp, pd.Series):
         return pd.Series(r, index=p_comp.index, name="competitor_rate")
@@ -149,23 +166,38 @@ def market_offers(p_lender1, p_lender2, r_ours, margin1, margin2=None,
 
     p_lender1, p_lender2 : default probabilities from our Lender 1 / Lender 2
                            models (same row order as r_ours)
-    r_ours               : our offered rates (lender 3), NaN = no offer
+    r_ours               : our offered rates (lender 3), NaN = no offer.
+                           Must lie in [0, 1]: rates above 100% are not
+                           allowed in the game (same cap as the competitors)
     margin1, margin2     : competitors' assumed margins (margin2 defaults to
                            margin1)
-    index                : optional index (e.g. row_id); taken from r_ours if
-                           it is a Series
+    index                : optional index (e.g. row_id); taken from the
+                           inputs if they are Series (which must then share
+                           the same index)
 
     Returns a DataFrame with columns r1, r2, r3 (decimals, NaN = no offer).
     """
     if margin2 is None:
         margin2 = margin1
-    if index is None and isinstance(r_ours, pd.Series):
-        index = r_ours.index
+    # Rows are matched by position, so Series inputs must share one index.
+    series = [x for x in (p_lender1, p_lender2, r_ours) if isinstance(x, pd.Series)]
+    if any(not x.index.equals(series[0].index) for x in series[1:]):
+        raise ValueError("p_lender1, p_lender2 and r_ours must have the same "
+                         "index, in the same order")
+    if index is None and series:
+        index = series[0].index
+
+    # Same rule for every lender: no rate above 100% (MAX_RATE), none below 0%.
+    r3 = np.asarray(r_ours, dtype=float)
+    finite = r3[np.isfinite(r3)]
+    if finite.size and (finite.max() > MAX_RATE or finite.min() < 0):
+        raise ValueError("our rates must lie in [0, 1]: decimals (0.12 for 12%), "
+                         "no rate above 100%")
 
     return pd.DataFrame({
         "r1": np.asarray(competitor_offers(p_lender1, margin1), dtype=float),
         "r2": np.asarray(competitor_offers(p_lender2, margin2), dtype=float),
-        "r3": np.asarray(r_ours, dtype=float),
+        "r3": r3,
     }, index=index)
 
 
