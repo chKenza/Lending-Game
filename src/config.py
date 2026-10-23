@@ -31,6 +31,8 @@ SUBMISSIONS_DIR = PROJECT_ROOT / "submissions"  # final id + rate CSV
 # --- input files -----------------------------------------------------------
 PAST_LOANS = DATA_RAW / "PastLoans.csv"  # historical loans, outcome known
 NEW_APPS_R1 = DATA_RAW / "NewApplications_Lender3_Round1.csv"  # round 1 applicants
+ROUND1_DIAGNOSTIC = DATA_RAW / "Round1_Diagnostic_31.csv"  # round 1 market outcome (course)
+NEW_APPS_R2 = DATA_RAW / "NewApplications_Lender3_Round2.csv"  # round 2 applicants
 
 # --- reproducibility -------------------------------------------------------
 SEED = 42
