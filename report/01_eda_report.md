@@ -1,7 +1,7 @@
 # Lending Game — Part 1: EDA findings
 
 What the data looks like, and what it implies for encoding and transforming the variables.
-Everything comes from `analysis/eda.ipynb`. Section 3 lists the recommendations; section 5 records what the team chose and implemented. Fuller reasoning: [`eda_report_detailed.md`](eda_report_detailed.md).
+Everything comes from `analysis/eda.ipynb`. Section 3 lists the recommendations; section 5 records what was implemented. Fuller reasoning: [`eda_report_detailed.md`](eda_report_detailed.md).
 
 We are **lender 3**, so `signal3` is our private signal; `signal1` and `signal2` appear only in the
 historical file.
@@ -16,7 +16,7 @@ historical file.
   → **one-hot, not ordinal**.
 - **~21% of every signal is exactly `0`, and it means "no signal received"**, not a low score:
   within every employment category the zero group defaults at that category's base rate.
-  → **don't encode it as the number `0`**; exact coding is the team's call.
+  → **don't encode it as the number `0`**; section 5 gives the coding used.
 - **The three signals are interchangeable and not redundant** (AUC 0.5429 / 0.5425 / 0.5446;
   mutual correlation ≈ 0.18) **but all three track employment strongly** (η ≈ 0.40). Their
   apparent −0.16 correlation with `log1p(income)` is a composition effect of the zero-income
@@ -197,8 +197,7 @@ so those two features may already span the pattern.
 Only 71 rows sit at the €1M cap (0.071%) and **all 71 repaid**, so the flag is perfectly separating
 on a very thin slice. With n = 71 the 95% CI on their default rate still reaches **5.13%**, so
 "these never default" is not established. The log transform already places them at the top of the
-scale. A broader `income ≥ €100k` flag (2,284 rows, 2 defaults) is less degenerate if the team
-wants one.
+scale. A broader `income ≥ €100k` flag (2,284 rows, 2 defaults) would be less degenerate.
 
 ### 3.6 Other interactions — low priority
 Dividing each `signal3 × employment` curve by its group's base rate makes the four nearly coincide
@@ -217,11 +216,11 @@ bias the sample towards profiles that happen not to collide.
 ## 4. Open questions
 
 1. **What does `signal = 0` actually mean?** The evidence strongly indicates "no signal received",
-   but the brief does not say. Worth confirming with the lecturer, since it determines the encoding.
+   but the brief does not say, and the answer determines the encoding.
 2. **Does an explicit `employment × income==0` interaction beat one-hot employment plus an
    income-zero flag?** (3.4)
 3. **Does the near-separation above €125,000 generalise**, or is it a small-sample artefact?
-4. **Are the duplicate rows acceptable to keep?** We think yes (3.7), but it is a team call.
+4. **Are the duplicate rows acceptable to keep?** We keep them (3.7).
 5. **Is the default mechanism unchanged** in the new file? Unverifiable without outcomes.
 
 ---

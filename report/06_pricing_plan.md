@@ -17,7 +17,7 @@ for tuning, and `data/predictions/validation_selected.csv` (20k loans), used for
 - No offer (`NaN`) when $p \ge 0.5$.
 - No rule ever uses competitor information; it only takes `p_own` and our own features.
 
-**Assumption to confirm:** the game is scored on total profit.
+**Assumption:** the game is scored on total profit.
 
 ---
 
@@ -237,7 +237,7 @@ The notebooks only call these functions.
 write-up. If time runs out, drop R7 or R5 and keep R6.
 3. scenario grid, regret, bootstrap, final choice.
 
-## Choices to confirm
+## Judgement calls
 
 - **Tuning set** T1–T6 and its weights (equilibrium 2/7, the others 1/7 each). These are choices,
   not facts.

@@ -1,7 +1,7 @@
 # Lending Game — Part 8: Pricing the new applications and the Stage 1 submission
 
 How the 100,000 new applicants were priced and how the submission file was built and checked.
-Everything comes from `analysis/submission.ipynb`; the code is in `src/submission.py`.
+Everything comes from `analysis/submission_round_1.ipynb`; the code is in `src/submission_round_1.py`.
 
 ## Summary
 

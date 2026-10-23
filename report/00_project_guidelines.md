@@ -18,6 +18,7 @@ loans to train a credit scoring model.
 
 ## Work Pipeline
 
+### Round 1
 **Part 1**: Exploratory Data Analysis and Feature Engineering
 
 **Part 2**: Predict Default Probability: Our Model + Full-Information Model + Competitor Models + Public Model
@@ -33,3 +34,17 @@ loans to train a credit scoring model.
 **Part 7**: Test Our Pricing Rules Against Competitor Scenarios
 
 **Part 8**: Score New Applications: Predict, Price, Submit
+
+#### Round 1 results:
+
+After round 1, we made 35M profit with 55.6% market share. We ranked 4th out of 12 groups. For round 2, we will work on making our rule better.
+
+### Round 2
+
+**Part 9**: Round 1 replay: Simulate the Performance of all Candidate Rules for Round 1
+
+**Part 10**: Infer the Rules of Competitors from Round 1
+
+**Part 11**: Improve our Rule for Round 2
+
+**Part 12**: Score New Applications for Round 2: Predict, Price, Submit

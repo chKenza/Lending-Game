@@ -10,7 +10,7 @@ The submission is a CSV with one row per loan application and two columns
 Usage from a notebook in analysis/:
 
     import sys; sys.path.append("..")
-    from src.submission import load_final_rule, make_submission, check_submission, write_submission
+    from src.submission_round_1 import load_final_rule, make_submission, check_submission, write_submission
 """
 
 import json

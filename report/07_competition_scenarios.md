@@ -6,11 +6,11 @@ which rule we submit. Everything comes from `analysis/competitor_scenarios.ipynb
 
 ## Summary
 
-- **We submit R4 ? up for discussion:** It is break-even plus a margin that rises with risk (about 2 points for
+- **We submit R4 :** It is break-even plus a margin that rises with risk (about 2 points for
   $p_{own} < 4.5\%$, about 3 points up to 11%, 17–19 points above), **without a cutoff**.
 - **R4 wins the main criterion.** It has the smallest worst-case regret (€0.99M, next best €1.30M)
   and the highest weighted profit (+€1.35M on 20,000 validation loans). The bootstrap confirms its
-  lead. **but should this be the main criterion?**
+  lead.
 - **R4 and Part 6's recommendation R4+C differ only on the riskiest third of applicants** (above
   $p_{own} = 12.5\%$): R4 quotes them very high rates, R4+C refuses them.
   - When competitors lend to these borrowers, the difference is small: 3–5% in favour of R4+C, not
@@ -117,7 +117,7 @@ alone.
 - With enough draws, random mode averages to expected mode, as it should: 300 draws gave €1.296M vs
   €1.305M for R4 in T6.
 
-## 3. Decision: R4 or R4+C ??
+## 3. Decision: R4
 
 **Why R4 rather than R4+C:**
 
@@ -152,5 +152,3 @@ moderate rates and we want a rule that never lost money in any scenario tested.
 Their weights, like all the scenario weights, are a judgement call.
 - **The competitors are our reconstruction** (our models of their default probabilities, plus assumed
   pricing). The real teams, and the LLM competitor, may behave differently from all sixteen scenarios.
-
-Basically, oyr decisions depend on the competitor scenarios, but we are not sure we are reconstructing their decisions correctly (their model and their pricing rule.)
