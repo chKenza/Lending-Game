@@ -24,8 +24,7 @@ visible only in the historical file.
   correlation −0.60) — confounding, not a property of employment. **Recommendation: one-hot, not
   ordinal**; whether an explicit interaction beats flag-plus-dummies is left open.
 - **~21% of every signal is exactly `0`, and four independent checks say it means "no signal
-  received"**, not a low score. **Recommendation: don't feed the zeros in as the number `0`; the
-  exact coding is the team's call.**
+  received"**, not a low score. **Recommendation: don't feed the zeros in as the number `0`.**
 - **The three signals are interchangeable and non-redundant** (AUC 0.5429 / 0.5425 / 0.5446;
   mutual correlation ≈ 0.18) **but all three track employment strongly** (η ≈ 0.40), so employment
   and the signals carry overlapping information.
@@ -379,8 +378,8 @@ lender received no signal for this applicant", recorded as `0` on the same colum
 The decisive test (5.4) holds within every employment category, which is the version hardest to
 explain away.
 
-It remains an **inference** — the course brief does not say what `0` means — so a confirmation
-from the lecturer would be worth having, since it determines how the signals should be encoded.
+It remains an **inference** — the course brief does not say what `0` means — and the answer
+determines how the signals should be encoded.
 
 ---
 
@@ -742,7 +741,7 @@ because the new file has no outcomes — that part has to be taken on trust.
 
 ## 10. Recommendations
 
-Each is a **recommendation with its evidence and its caveats**. The team decides.
+Each is a **recommendation with its evidence and its caveats**.
 
 ### 10.1 Log-transform income — recommended
 **Evidence:** raw skew 11.94; linear fit to the bin log-odds improves from R² 0.713 to 0.965.
@@ -760,7 +759,7 @@ same employment group; AUC 0.5974 standalone, second only to income itself.
 ### 10.3 Do not feed the signal zeros in as the number `0` — recommended, coding left open
 **Evidence:** section 5, four consistent checks; and on identical rows, recoding the zeros to a
 neutral value is worth +0.021 to +0.024 AUC with bootstrap intervals excluding zero.
-**The exact coding is the team's call.** Options worth comparing on validation data:
+Options worth comparing on validation data:
 1. a `signal_missing` indicator column plus the signal imputed to a neutral value,
 2. imputation alone,
 3. leaving the `0` in place for a tree model to split off by itself,
@@ -783,7 +782,7 @@ the four categories, so the two main-effect features may already span the patter
 is perfectly separating on a very thin slice of the data. With n = 71 the 95% CI on their default
 rate still reaches **5.13%** — half the population rate — so "these never default" is not
 established by the data. The log transform already places them at the top of the scale.
-**Alternative if the team wants one:** a broader `income ≥ €100k` flag (2,284 rows, 2 defaults) is
+**Alternative:** a broader `income ≥ €100k` flag (2,284 rows, 2 defaults) is
 less degenerate, though still close to separating.
 
 ### 10.6 Other interactions — low priority
@@ -803,12 +802,11 @@ them would discard real borrowers and bias the sample towards profiles that happ
 ## 11. Open questions
 
 1. **What does `signal = 0` actually mean?** Our evidence strongly indicates "no signal received",
-   but the brief does not say. Worth confirming with the lecturer, since the answer determines
-   how the signals should be encoded.
+   but the brief does not say, and the answer determines how the signals should be encoded.
 2. **Does an explicit `employment × income==0` interaction beat one-hot employment plus an
    income-zero flag?** (10.4)
 3. **Does the near-separation above €125,000 generalise**, or is it a small-sample artefact?
-4. **Are the duplicate rows acceptable to keep?** We think yes (10.7), but it is a team call.
+4. **Are the duplicate rows acceptable to keep?** We keep them (10.7).
 5. **Is the default mechanism really unchanged** in the new file? Unverifiable without outcomes
    (section 9); taken on trust from the brief.
 
